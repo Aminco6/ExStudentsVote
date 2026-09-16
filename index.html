@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ex-Students Election 2026</title>
+<link rel="stylesheet" href="./css/style.css?v=20">
+</head>
+<body>
+
+<!-- WELCOME -->
+<section id="screen-welcome" class="screen active">
+  <div class="hero">
+    <div class="logo">🗳️</div>
+    <h1>EX-STUDENTS ELECTION 2026</h1>
+    <p>Your voice matters.</p>
+    <button class="btn btn-primary btn-lg" id="vote-now-btn" type="button">VOTE NOW</button>
+    <a class="btn btn-ghost" href="./results.html">VIEW RESULTS</a>
+  </div>
+</section>
+
+<!-- LOGIN -->
+<section id="screen-login" class="screen">
+  <div class="form-card">
+    <h2>Enter your registered phone number</h2>
+    <form id="login-form" autocomplete="off" novalidate>
+      <label class="field">
+        <span>Phone number</span>
+        <div class="input-group">
+          <span class="prefix">+234</span>
+          <input type="tel" name="phone" inputmode="numeric" pattern="[0-9]*"
+                 maxlength="11" required placeholder="8012345678">
+        </div>
+      </label>
+      <button class="btn btn-primary btn-lg" type="submit" id="login-btn"
+              style="width:100%">CONTINUE</button>
+      <p class="error-msg" id="login-error" role="alert"></p>
+    </form>
+  </div>
+</section>
+
+<!-- BALLOT -->
+<section id="screen-ballot" class="screen">
+  <header class="app-header">
+    <div>
+      <div class="progress" id="progress">STEP 1 OF 1</div>
+      <div id="welcome-name" style="font-weight:700;margin-top:4px"></div>
+    </div>
+  </header>
+  <h2 class="position-title" id="position-title">POSITION</h2>
+  <div id="nominee-grid"></div>
+  <div class="actions">
+    <button class="btn btn-ghost" id="back-btn" type="button" hidden>← BACK</button>
+    <button class="btn btn-primary" id="continue-btn" type="button" disabled>CONTINUE →</button>
+  </div>
+</section>
+
+<!-- REVIEW -->
+<section id="screen-review" class="screen">
+  <header class="app-header"><h2 style="margin:0">Review your vote</h2></header>
+  <ul class="review-list" id="review-list"></ul>
+  <div class="actions">
+    <button class="btn btn-ghost" id="change-btn" type="button">CHANGE</button>
+    <button class="btn btn-primary" id="submit-btn" type="button">SUBMIT VOTE</button>
+  </div>
+</section>
+
+<!-- SUCCESS -->
+<section id="screen-success" class="screen">
+  <div class="success">
+    <div class="check">✓</div>
+    <h2 id="success-title">VOTE RECORDED</h2>
+    <p id="success-sub">Thank you.</p>
+  </div>
+</section>
+
+<!-- CONFIRM MODAL -->
+<div class="modal" id="confirm-modal" hidden>
+  <div class="modal-card">
+    <h3>Are you sure?</h3>
+    <p>You cannot vote again after submission.</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="cancel-btn" type="button">CANCEL</button>
+      <button class="btn btn-primary" id="confirm-btn" type="button">CONFIRM</button>
+    </div>
+  </div>
+</div>
+
+<!--
+  Script order matters:
+  1. app.js defines the API URL + wires up all vote-screen handlers.
+     It must run BEFORE the small inline handler, and it must not
+     throw if any element is missing.
+  2. The inline script only handles the welcome → login transition,
+     wrapped in a DOMContentLoaded + null-check so it can never crash
+     the page.
+  3. debug.js is loaded last so it can report on the state of app.js.
+-->
+<script src="./js/app.js?v=20"></script>
+<script>
+  (function () {
+    function goToLogin() {
+      var screens = document.querySelectorAll('.screen');
+      for (var i = 0; i < screens.length; i++) screens[i].classList.remove('active');
+      var login = document.getElementById('screen-login');
+      if (login) login.classList.add('active');
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+      var btn = document.getElementById('vote-now-btn');
+      if (btn) btn.addEventListener('click', goToLogin);
+    });
+  })();
+</script>
+<script src="./js/debug.js?v=20"></script>
+
+</body>
+</html>
