@@ -1,148 +1,173 @@
-/**
- * debug.js — Frontend diagnostics for the election site.
- * Open the browser console to see the results.
- * Remove the <script src="./js/debug.js"></script> line from index.html
- * once everything works.
- */
-(async function () {
-  const cfgUrl = (window.API_URL || '').trim();
-  const lines = [];
-  const log = (label, val) => {
-    const line = label + ': ' + val;
-    lines.push(line);
-    console.log('[DEBUG] ' + line);
-  };
+const API_URL = "https://script.google.com/macros/s/AKfycbz6s_68Qwa3B15eFVYveFM6j7q7in8Hv2gv32jCmNplVsaoRX1Oj1yFcffAIQtLHBJ0/exec";
 
-  console.log('%c==== ELECTION FRONTEND DEBUG ====', 'font-weight:bold;color:#2563eb');
+const state = { voter: null, ballot: [], step: 0, picks: {} };
+const $  = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const show = id => $$('.screen').forEach(x => x.classList.toggle('active', x.id === id));
 
-  // 1. Config check
-  log('Page URL', location.href);
-  log('API_URL', cfgUrl || '(EMPTY)');
-  if (!cfgUrl) {
-    log('RESULT', '❌ API_URL is empty in js/app.js — paste your /exec URL');
-    finish(); return;
-  }
-  if (cfgUrl.indexOf('PASTE_') === 0 || cfgUrl.indexOf('PASTE_APPS_SCRIPT') >= 0) {
-    log('RESULT', '❌ API_URL still contains the placeholder text');
-    finish(); return;
-  }
-  if (cfgUrl.indexOf('/dev') > -1) {
-    log('RESULT', '❌ API_URL ends in /dev — must be /exec');
-    finish(); return;
-  }
-  if (cfgUrl.indexOf('/exec') === -1) {
-    log('RESULT', '⚠️ API_URL does not end in /exec — check for typos');
-  }
-  if (cfgUrl !== cfgUrl.replace(/\s/g, '')) {
-    log('RESULT', '⚠️ API_URL contains whitespace — trim it');
-  }
+async function api(action, payload = {}) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action, ...payload })
+  });
+  return res.json();
+}
 
-  // 2. Mixed content check
-  if (location.protocol === 'http:' && cfgUrl.indexOf('https://') === 0) {
-    log('RESULT', '❌ Site loaded over http:// but API is https:// — browsers block this');
-  }
+// -------- Login --------
+$('#login-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('#login-btn');
+  const err = $('#login-error');
+  err.textContent = '';
+  let phone = String(new FormData(e.target).get('phone') || '').replace(/\D/g, '');
+  if (phone.length === 10) phone = '0' + phone;
+  if (!/^0\d{10}$/.test(phone)) { err.textContent = 'Enter a valid phone number.'; return; }
 
-  // 3. GET test — simplest possible request
-  log('---', 'Test 1: GET ?action=getBallot');
+  btn.disabled = true;
+  btn.textContent = 'VERIFYING…';
   try {
-    const getUrl = cfgUrl + '?action=getBallot';
-    const t0 = performance.now();
-    const res = await fetch(getUrl, { method: 'GET', redirect: 'follow' });
-    const ms = Math.round(performance.now() - t0);
-    log('GET status', res.status + ' (' + ms + 'ms)');
-    log('GET redirected to', res.url);
-    const txt = await res.text();
-    log('GET body (first 300 chars)', txt.slice(0, 300));
-    if (txt.trim().startsWith('{')) {
-      try {
-        const j = JSON.parse(txt);
-        log('GET parsed', JSON.stringify(j).slice(0, 200));
-        log('RESULT', '✅ GET works — backend is reachable');
-      } catch (e) { log('RESULT', '⚠️ GET returned invalid JSON'); }
-    } else if (txt.trim().startsWith('<')) {
-      log('RESULT', '❌ GET returned HTML (login page or error page) — deployment access is not "Anyone"');
-    } else {
-      log('RESULT', '❌ GET returned unrecognized body');
-    }
-  } catch (e) {
-    log('GET threw', e.name + ' — ' + e.message);
-    log('RESULT', '❌ GET fetch failed before reaching the server (CORS / DNS / mixed-content)');
+    const r = await api('verifyVoter', { phone });
+    if (!r.success) { err.textContent = r.message; return; }
+    state.voter = { id: r.voter_id, name: r.name };
+    $('#welcome-name').textContent = 'Welcome, ' + r.name;
+    const b = await api('getBallot');
+    if (!b.success) { err.textContent = b.message; return; }
+    state.ballot = b.positions;
+    state.step = 0;
+    state.picks = {};
+    renderStep();
+    show('screen-ballot');
+  } catch (ex) {
+    err.textContent = 'Network error. Try again.';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'CONTINUE';
   }
+});
 
-  // 4. POST test — what the site actually uses
-  log('---', 'Test 2: POST {action:"getBallot"}');
+// -------- Ballot render --------
+function renderStep() {
+  const pos = state.ballot[state.step];
+  $('#progress').textContent = `STEP ${state.step + 1} OF ${state.ballot.length}`;
+  $('#position-title').textContent = pos.name.toUpperCase();
+  const grid = $('#nominee-grid');
+  grid.innerHTML = '';
+  pos.nominees.forEach((n, i) => {
+    const card = document.createElement('article');
+    card.className = 'nominee-card';
+    card.style.animationDelay = (i * 60) + 'ms';
+    card.dataset.id = n.id;
+    card.innerHTML = `
+      <div class="checkmark">✓</div>
+      <img src="${n.photo || placeholder(n.name)}" alt="${escapeHtml(n.name)}"
+           onerror="this.src='${placeholder(n.name)}'">
+      <div class="card-body">
+        <div class="card-name">${escapeHtml(n.name)}</div>
+        <button class="select-btn" type="button">SELECT</button>
+      </div>`;
+    card.addEventListener('click', () => select(pos.name, n.id, card));
+    grid.appendChild(card);
+  });
+  const picked = state.picks[pos.name];
+  if (picked) {
+    const c = grid.querySelector(`[data-id="${picked}"]`);
+    if (c) c.classList.add('selected');
+  }
+  $('#continue-btn').disabled = !state.picks[pos.name];
+  $('#back-btn').hidden = state.step === 0;
+}
+
+function select(positionName, nomineeId, card) {
+  state.picks[positionName] = nomineeId;
+  $$('#nominee-grid .nominee-card').forEach(c => c.classList.remove('selected'));
+  card.classList.add('selected');
+  $('#continue-btn').disabled = false;
+}
+
+$('#back-btn').addEventListener('click', () => {
+  if (state.step > 0) { state.step--; renderStep(); }
+});
+$('#continue-btn').addEventListener('click', () => {
+  if (state.step < state.ballot.length - 1) { state.step++; renderStep(); }
+  else { renderReview(); show('screen-review'); }
+});
+
+// -------- Review --------
+function renderReview() {
+  const ul = $('#review-list');
+  ul.innerHTML = '';
+  state.ballot.forEach(p => {
+    const nid = state.picks[p.name];
+    const n = p.nominees.find(x => x.id === nid) || { name: '—' };
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="rv-pos">${escapeHtml(p.name)}</span>
+                    <span class="rv-who">${escapeHtml(n.name)}</span>`;
+    ul.appendChild(li);
+  });
+}
+$('#change-btn').addEventListener('click', () => {
+  state.step = state.ballot.length - 1;
+  renderStep();
+  show('screen-ballot');
+});
+
+// -------- Submit --------
+$('#submit-btn').addEventListener('click', () => { $('#confirm-modal').hidden = false; });
+$('#cancel-btn').addEventListener('click', () => { $('#confirm-modal').hidden = true; });
+$('#confirm-btn').addEventListener('click', doSubmit);
+
+let submitting = false;
+async function doSubmit() {
+  if (submitting) return;
+  submitting = true;
+  $('#confirm-modal').hidden = true;
+  const btn = $('#submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  const votes = state.ballot.map(p => ({
+    position: p.name,
+    nominee_id: state.picks[p.name]
+  }));
+
   try {
-    const t0 = performance.now();
-    const res = await fetch(cfgUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'getBallot' }),
-      redirect: 'follow'
-    });
-    const ms = Math.round(performance.now() - t0);
-    log('POST status', res.status + ' (' + ms + 'ms)');
-    log('POST redirected to', res.url);
-    const txt = await res.text();
-    log('POST body (first 300 chars)', txt.slice(0, 300));
-    if (txt.trim().startsWith('{')) {
-      try {
-        const j = JSON.parse(txt);
-        log('POST parsed', JSON.stringify(j).slice(0, 200));
-        if (j.success === false && j.error_code === 'ELECTION_CLOSED') {
-          log('RESULT', '✅ POST works — backend says election is CLOSED (set election_open = TRUE)');
-        } else if (j.success === true) {
-          log('RESULT', '✅ POST works — election is OPEN');
-        } else {
-          log('RESULT', '✅ POST works — backend returned: ' + (j.message || j.error_code));
-        }
-      } catch (e) { log('RESULT', '⚠️ POST returned invalid JSON'); }
-    } else if (txt.trim().startsWith('<')) {
-      log('RESULT', '❌ POST returned HTML — deployment access likely not "Anyone"');
-    } else {
-      log('RESULT', '❌ POST returned unrecognized body');
+    const r = await api('submitVote', { voter_id: state.voter.id, votes });
+    if (!r.success) {
+      if (r.error_code === 'ALREADY_VOTED') {
+        $('#success-title').textContent = 'ALREADY VOTED';
+        $('#success-sub').textContent = 'This phone number has already been used.';
+        show('screen-success');
+        return;
+      }
+      alert(r.message || 'Submission failed.');
+      btn.disabled = false;
+      btn.textContent = 'SUBMIT VOTE';
+      return;
     }
+    $('#success-title').textContent = 'VOTE RECORDED';
+    $('#success-sub').textContent = 'Thank you, ' + state.voter.name + '.';
+    show('screen-success');
   } catch (e) {
-    log('POST threw', e.name + ' — ' + e.message);
-    log('RESULT', '❌ POST fetch failed — this is what triggers "Network error. Try again."');
-    if (String(e.message).toLowerCase().indexOf('cors') > -1) {
-      log('FIX', 'Deploy → Manage deployments → ✏️ → Who has access: Anyone → Deploy');
-    }
-    if (String(e.message).toLowerCase().indexOf('failed to fetch') > -1) {
-      log('FIX', 'Check that API_URL is exactly the /exec URL, no trailing slash, no spaces');
-    }
-    if (String(e.message).toLowerCase().indexOf('mixed') > -1) {
-      log('FIX', 'Open the GitHub Pages site over https:// (not http://)');
-    }
+    alert('Could not reach the server. Your vote was NOT submitted.');
+    btn.disabled = false;
+    btn.textContent = 'SUBMIT VOTE';
+  } finally {
+    submitting = false;
   }
+}
 
-  log('---', 'Test 3: verifyVoter with dummy phone (should NOT crash)');
-  try {
-    const res = await fetch(cfgUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'verifyVoter', phone: '08000000000' }),
-      redirect: 'follow'
-    });
-    const txt = await res.text();
-    log('verifyVoter status', res.status);
-    log('verifyVoter body', txt.slice(0, 300));
-    log('RESULT', '✅ verifyVoter endpoint responds');
-  } catch (e) {
-    log('verifyVoter threw', e.name + ' — ' + e.message);
-  }
-
-  finish();
-
-  function finish() {
-    console.log('%c==== SUMMARY ====', 'font-weight:bold;color:#2563eb');
-    lines.forEach(l => console.log('  ' + l));
-
-    // Also drop a visible banner on the page
-    const box = document.createElement('div');
-    box.style.cssText = 'position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow:auto;' +
-      'background:#0f172a;color:#e2e8f0;font-family:monospace;font-size:11px;' +
-      'padding:10px;z-index:9999;border-top:3px solid #2563eb;white-space:pre-wrap';
-    box.textContent = '=== FRONTEND DEBUG ===\n' + lines.join('\n');
-    document.body.appendChild(box);
-  }
-})();
+// -------- Helpers --------
+function placeholder(name) {
+  const initials = (name || '?').split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400">
+    <rect width="100%" height="100%" fill="#1a3a6b"/>
+    <text x="50%" y="55%" font-size="140" fill="#f2b705" text-anchor="middle"
+      font-family="Arial" font-weight="bold">${initials}</text></svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  })[c]);
+}
