@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ex-Students Election 2026</title>
-<link rel="stylesheet" href="./css/style.css?v=30">
+<link rel="stylesheet" href="./css/style.css?v=20">
 </head>
 <body>
 
@@ -65,15 +65,24 @@
   </div>
 </section>
 
+
+
+
 <!-- SUCCESS -->
 <section id="screen-success" class="screen">
   <div class="success">
     <div class="check">✓</div>
     <h2 id="success-title">VOTE RECORDED</h2>
     <p id="success-sub">Thank you.</p>
+    <div style="margin-top:24px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+      <a class="btn btn-ghost" href="./results.html">VIEW RESULTS</a>
+      <a class="btn btn-primary" href="./index.html">BACK TO HOME</a>
+    </div>
   </div>
 </section>
 
+
+    
 <!-- CONFIRM MODAL -->
 <div class="modal" id="confirm-modal" hidden>
   <div class="modal-card">
@@ -96,7 +105,7 @@
      the page.
   3. debug.js is loaded last so it can report on the state of app.js.
 -->
-<script src="./js/app.js?v=30"></script>
+<script src="./js/app.js?v=20"></script>
 <script>
   (function () {
     function goToLogin() {
